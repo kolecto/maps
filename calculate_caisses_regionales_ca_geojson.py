@@ -2,8 +2,10 @@ import geopandas as gpd
 import json
 
 from shapely.geometry import mapping
+from shapely.ops import unary_union
+from shapely.affinity import translate, scale
 
-departements_gdf = gpd.read_file("departements_fr.geojson")
+departements_gdf = gpd.read_file("departements_full_fr.geojson")
 
 caisses_regionales_ca = {
     "Alpes Provence": ["Bouches-du-Rhône", "Hautes-Alpes", "Vaucluse"],
@@ -47,17 +49,45 @@ caisses_regionales_ca = {
     "Val de France": ["Loir-et-Cher", "Eure-et-Loir"]
 }
 
+encarts_transformations = {
+    "Guadeloupe": {"xoff": 56.0,  "yoff": 30.6, "scale": 1},
+    "Martinique": {"xoff": 55.5,  "yoff": 31.0, "scale": 1},
+    "Guyane":     {"xoff": 47.8,  "yoff": 40.6, "scale": 0.25},
+    "La Réunion": {"xoff": -61.0, "yoff": 64.5, "scale": 1},
+    "Mayotte":    {"xoff": -50.6, "yoff": 55.4, "scale": 1},
+}
+
 regions_geoms = []
 
 for region, deps in caisses_regionales_ca.items():
-    deps_in_region = departements_gdf[departements_gdf['nom'].isin(deps)]
-    region_geom = deps_in_region.union_all()
-
-    regions_geoms.append({
-        "type": "Feature",
-        "properties": {"region_name": region},
-        "geometry": mapping(region_geom)
-    })
+    geom_list = []
+    
+    for dep_name in deps:
+        dep_row = departements_gdf[departements_gdf['nom'].str.contains(dep_name, case=False, na=False)]
+        
+        if dep_row.empty:
+            print(f"⚠️ Attention : Le département '{dep_name}' n'a pas été trouvé dans le GeoJSON.")
+            continue
+            
+        geom = dep_row.geometry.iloc[0]
+        
+        for target_name, params in encarts_transformations.items():
+            if target_name in dep_name:
+                if params["scale"] != 1:
+                    geom = scale(geom, xfact=params["scale"], yfact=params["scale"], origin='centroid')
+                geom = translate(geom, xoff=params["xoff"], yoff=params["yoff"])
+                break 
+                
+        geom_list.append(geom)
+    
+    if geom_list:
+        region_geom = unary_union(geom_list)
+        
+        regions_geoms.append({
+            "type": "Feature",
+            "properties": {"region_name": region},
+            "geometry": mapping(region_geom)
+        })
 
 geojson_output = {
     "type": "FeatureCollection",
@@ -65,5 +95,7 @@ geojson_output = {
 }
 
 output_path = 'caisses_regionales_ca.geojson'
-with open(output_path, 'w') as f:
-    json.dump(geojson_output, f)
+with open(output_path, 'w', encoding='utf-8') as f:
+    json.dump(geojson_output, f, ensure_ascii=False)
+
+print("✅ Traitement terminé. Le fichier 'caisses_regionales_ca.geojson' a été généré avec succès !")
