@@ -63,7 +63,7 @@ for region, deps in caisses_regionales_ca.items():
     geom_list = []
     
     for dep_name in deps:
-        dep_row = departements_gdf[departements_gdf['nom'].str.contains(dep_name, case=False, na=False)]
+        dep_row = departements_gdf[departements_gdf['nom'].str.lower() == dep_name.lower()]
         
         if dep_row.empty:
             print(f"⚠️ Attention : Le département '{dep_name}' n'a pas été trouvé dans le GeoJSON.")
